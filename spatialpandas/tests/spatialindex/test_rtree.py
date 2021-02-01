@@ -87,6 +87,7 @@ def covers_bruteforce(query_bounds, bounds):
 
 
 # ### Hypothesis tests ###
+@pytest.mark.slow
 @given(st_bounds_array(), st_page_size)
 @hyp_settings
 def test_rtree_intersects_input_bounds(bounds_array, page_size):
@@ -105,6 +106,7 @@ def test_rtree_intersects_input_bounds(bounds_array, page_size):
         assert intersected == intersects_bruteforce(b, bounds_array)
 
 
+@pytest.mark.slow
 @given(st_bounds_array(min_size=0, max_size=0), st_page_size)
 @hyp_settings
 def test_rtree_empty(bounds_array, page_size):
@@ -119,6 +121,7 @@ def test_rtree_empty(bounds_array, page_size):
     assert rt.total_bounds == (np.nan,) * (2 * n)
 
 
+@pytest.mark.slow
 @given(
     st_bounds_array(n_min=2, n_max=2),
     st_bounds_array(n_min=2, n_max=2, min_size=10),
@@ -138,6 +141,7 @@ def test_rtree_intersects_different_bounds_2d(bounds_array, query_array, page_si
         assert intersected == intersects_bruteforce(b, bounds_array)
 
 
+@pytest.mark.slow
 @given(st_bounds_array(n_min=1), st_page_size)
 @hyp_settings
 def test_rtree_intersects_all(bounds_array, page_size):
@@ -155,6 +159,7 @@ def test_rtree_intersects_all(bounds_array, page_size):
     assert intersected == set(range(bounds_array.shape[0]))
 
 
+@pytest.mark.slow
 @given(st_bounds_array(), st_page_size)
 @hyp_settings
 def test_rtree_intersects_none(bounds_array, page_size):
@@ -199,6 +204,7 @@ def test_rtree_covers_overlaps_input_bounds(bounds_array, page_size):
         assert intersects == covers.union(overlaps)
 
 
+@pytest.mark.slow
 @given(st_bounds_array(), st_page_size)
 @hyp_settings
 def test_rtree_pickle(bounds_array, page_size):

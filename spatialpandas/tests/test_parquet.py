@@ -123,6 +123,7 @@ def test_parquet_dask(gp_multipoint, gp_multiline, tmp_path_factory):
         assert ddf_read.geometry.name == 'points'
 
 
+@pytest.mark.slow
 @given(
     gp_multipoint=st_multipoint_array(min_size=10, max_size=40, geoseries=True),
     gp_multiline=st_multiline_array(min_size=10, max_size=40, geoseries=True),

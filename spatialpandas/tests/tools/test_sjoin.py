@@ -4,10 +4,8 @@ import hypothesis.strategies as hs
 import numpy as np
 import pandas as pd
 import pytest
-
-from hypothesis import given
-
 import spatialpandas as sp
+from hypothesis import given
 from spatialpandas import GeoDataFrame
 from spatialpandas.dask import DaskGeoDataFrame
 
@@ -15,11 +13,11 @@ from ..geometry.strategies import st_point_array, st_polygon_array
 from ..test_parquet import hyp_settings
 
 try:
-    from geopandas._compat import USE_PYGEOS, HAS_RTREE
+    from geopandas._compat import HAS_RTREE, USE_PYGEOS
     gpd_spatialindex = USE_PYGEOS or HAS_RTREE
 except:
     try:
-        import rtree # noqa
+        import rtree  # noqa
         gpd_spatialindex = rtree
     except Exception:
         gpd_spatialindex = False
@@ -29,6 +27,7 @@ if not gpd_spatialindex:
                 allow_module_level=True)
 
 
+@pytest.mark.slow
 @given(
     st_point_array(min_size=1, geoseries=True),
     st_polygon_array(min_size=1, geoseries=True),
