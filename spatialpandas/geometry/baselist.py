@@ -8,9 +8,16 @@ from spatialpandas.geometry.base import Geometry, GeometryArray
 from ._algorithms.bounds import (
     total_bounds_interleaved, total_bounds_interleaved_1d, bounds_interleaved
 )
+from numpy import dtype, float64, int64, ndarray
+from pyarrow.lib import DataType, DoubleArray, Int64Array, ListArray, ListType, ListValue, NullArray
+from typing import Any, Optional, Tuple, Type, Union
 
 
-def _validate_nested_arrow_type(nesting_levels, pyarrow_type):
+class GeometryListArray:
+    pass
+
+
+def _validate_nested_arrow_type(nesting_levels: int, pyarrow_type: Union[ListType, DataType]) -> DataType:
     if pyarrow_type == pa.null():
         return pa.null()
 
@@ -40,7 +47,7 @@ class _ListArrayBufferMixin:
     stored as the numpy_dtype property
     """
     @property
-    def buffer_values(self):
+    def buffer_values(self) -> ndarray:
         value_buffer = self.listarray.buffers()[-1]
         if value_buffer is None:
             return np.array([], dtype=self.numpy_dtype)
@@ -48,7 +55,7 @@ class _ListArrayBufferMixin:
             return np.asarray(value_buffer).view(self.numpy_dtype)
 
     @property
-    def buffer_offsets(self):
+    def buffer_offsets(self) -> Union[Tuple[ndarray], Tuple[ndarray, ndarray], Tuple[ndarray, ndarray, ndarray]]:
         """
         Tuple of offsets arrays, one for each tested level.
         """
@@ -73,7 +80,7 @@ class _ListArrayBufferMixin:
         return (offsets1,) + remaining_offsets
 
     @property
-    def flat_values(self):
+    def flat_values(self) -> ndarray:
         """
         Flat array of the valid values. This differs from buffer_values if the pyarrow
         ListArray backing this object is a slice. buffer_values will contain all
@@ -91,7 +98,7 @@ class _ListArrayBufferMixin:
         return self.buffer_values[start:stop]
 
     @property
-    def buffer_outer_offsets(self):
+    def buffer_outer_offsets(self) -> ndarray:
         """
         Array of the offsets into buffer_values that separate the outermost nested
         structure of geometry object(s), regardless of the number of nesting levels.
@@ -104,7 +111,7 @@ class _ListArrayBufferMixin:
         return flat_offsets
 
     @property
-    def buffer_inner_offsets(self):
+    def buffer_inner_offsets(self) -> ndarray:
         """
         Array of the offsets into buffer_values that separate the innermost nested
         structure of geometry object(s), regardless of the number of nesting levels.
@@ -118,6 +125,10 @@ class _ListArrayBufferMixin:
         return buffer_offsets[-1][start:stop + 1]
 
 
+class GeometryList:
+    pass
+
+
 @total_ordering
 class GeometryList(Geometry, _ListArrayBufferMixin):
     """
@@ -126,7 +137,7 @@ class GeometryList(Geometry, _ListArrayBufferMixin):
     _nesting_levels = 0
 
     @staticmethod
-    def _pa_element_value_type(data):
+    def _pa_element_value_type(data: Union[ListType, ListValue]) -> Union[ListType, DataType]:
         """
         Get value type of pyarrow ListArray element for different versions of pyarrow
         """
@@ -138,7 +149,7 @@ class GeometryList(Geometry, _ListArrayBufferMixin):
             return data.value_type
 
     @staticmethod
-    def _pa_element_values(data):
+    def _pa_element_values(data: ListValue) -> Union[NullArray, DoubleArray, ListArray, Int64Array]:
         """
         Get values of nested pyarrow ListArray element for different versions of pyarrow
         """
@@ -149,7 +160,7 @@ class GeometryList(Geometry, _ListArrayBufferMixin):
             # Try pre 1.0 API
             return pa.array(data.as_py(), data.value_type)
 
-    def __init__(self, data, dtype=None):
+    def __init__(self, data: Any, dtype: Optional[dtype]=None) -> None:
         super().__init__(data)
         if len(self.data) > 0:
             value_type = GeometryList._pa_element_value_type(self.data)
@@ -158,7 +169,7 @@ class GeometryList(Geometry, _ListArrayBufferMixin):
         # create listarray for _ListArrayBufferMixin
         self.listarray = GeometryList._pa_element_values(self.data)
 
-    def __lt__(self, other):
+    def __lt__(self, other: GeometryList) -> bool:
         if type(other) is not type(self):
             return NotImplemented
         return _lexographic_lt(np.asarray(self.listarray), np.asarray(other.listarray))
@@ -171,7 +182,7 @@ class GeometryList(Geometry, _ListArrayBufferMixin):
         return GeometryListArray
 
     @property
-    def numpy_dtype(self):
+    def numpy_dtype(self) -> dtype:
         if isinstance(self.listarray, pa.NullArray):
             return None
         else:
@@ -189,7 +200,7 @@ class GeometryListArray(GeometryArray, _ListArrayBufferMixin):
     _nesting_levels = 1
 
     @classmethod
-    def _arrow_type_from_numpy_element_dtype(cls, dtype):
+    def _arrow_type_from_numpy_element_dtype(cls, dtype: Union[Type[int64], str, Type[float64]]) -> ListType:
         # Scalar element dtype
         arrow_dtype = pa.from_numpy_dtype(dtype)
 
@@ -199,7 +210,7 @@ class GeometryListArray(GeometryArray, _ListArrayBufferMixin):
 
         return arrow_dtype
 
-    def _numpy_element_dtype_from_arrow_type(self, pyarrow_type):
+    def _numpy_element_dtype_from_arrow_type(self, pyarrow_type: ListType) -> Union[Type[int64], Type[float64]]:
         if pyarrow_type == pa.null():
             return pa.null()
 
@@ -210,7 +221,7 @@ class GeometryListArray(GeometryArray, _ListArrayBufferMixin):
         return pyarrow_element_type.to_pandas_dtype()
 
     # Constructor
-    def __init__(self, array, dtype=None):
+    def __init__(self, array: Any, dtype: Optional[Any]=None) -> None:
         super().__init__(array, dtype)
 
         # Set listarray property for _ListArrayBufferMixin
@@ -232,7 +243,7 @@ an even number of elements. Received specification with an odd number of element
 
     # Base geometry methods
     @property
-    def total_bounds(self):
+    def total_bounds(self) -> Tuple[float, float, float, float]:
         return total_bounds_interleaved(self.flat_values)
 
     @property
@@ -272,7 +283,7 @@ def _lexographic_lt0(a1, a2):
     return len(a1) < len(a2)
 
 
-def _lexographic_lt(a1, a2):
+def _lexographic_lt(a1: ndarray, a2: ndarray) -> bool:
     if a1.dtype != np.object and a1.dtype != np.object:
         # a1 and a2 primitive
         return _lexographic_lt0(a1, a2)
@@ -333,5 +344,3 @@ def _geometry_map_nested3(
             start = value_offsets1[value_offsets0[i]]
             stop = value_offsets1[value_offsets0[i + 1]]
             result[i] = fn(values, value_offsets2[start:stop + 1])
-
-

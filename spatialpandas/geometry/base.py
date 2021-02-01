@@ -1,20 +1,36 @@
 import re
 from collections.abc import Container, Iterable
 from numbers import Integral
+from typing import Any, List, Optional, Tuple, Type, Union
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+from geopandas.geoseries import GeoSeries
+from numpy import dtype, float64, int64, ndarray
 from pandas.api.extensions import ExtensionArray, ExtensionDtype
 from pandas.api.types import is_array_like
-from spatialpandas.spatialindex import HilbertRtree
-from spatialpandas.spatialindex.rtree import _distances_from_bounds
-from spatialpandas.utils import ngjit
+from pandas.core.arrays.integer import IntegerArray
+from pandas.core.internals.managers import SingleBlockManager
+from pandas.core.series import Series
+from pyarrow.lib import ChunkedArray, FixedSizeBinaryArray, ListArray
+from shapely.geometry.linestring import LineString
+from shapely.geometry.multilinestring import MultiLineString
+from shapely.geometry.multipoint import MultiPoint
+from shapely.geometry.point import Point
 
 from .._optional_imports import gp, sg
+from ..spatialindex import HilbertRtree
+from ..spatialindex.rtree import _distances_from_bounds
+from ..utils import ngjit
+from .line import Line, LineArray, LineDtype
+from .multiline import MultiLine, MultiLineArray, MultiLineDtype
+from .multipoint import MultiPoint, MultiPointArray, MultiPointDtype
+from .point import Point, PointArray, PointDtype
+from .ring import RingArray, RingDtype
 
 
-def _unwrap_geometry(a, element_dtype):
+def _unwrap_geometry(a: Any, element_dtype: Any) -> Any:
     try:
         if np.isscalar(a) and np.isnan(a):
             # replace top-level nana with None
@@ -30,13 +46,25 @@ def _unwrap_geometry(a, element_dtype):
         return a
 
 
+class Geometry:
+    pass
+
+
+class GeometryDtype:
+    pass
+
+
+class GeometryArray:
+    pass
+
+
 class GeometryDtype(ExtensionDtype):
     _geometry_name = 'geometry'
     base = np.dtype('O')
     _metadata = ('subtype',)
     na_value = np.nan
 
-    def __from_arrow__(self, data):
+    def __from_arrow__(self, data: ChunkedArray) -> GeometryArray:
         return self.construct_array_type()(data, dtype=self)
 
     @classmethod
@@ -48,7 +76,7 @@ class GeometryDtype(ExtensionDtype):
         return GeometryArray
 
     @classmethod
-    def _parse_subtype(cls, dtype_string):
+    def _parse_subtype(cls, dtype_string: str) -> str:
         # Be case insensitive
         dtype_string = dtype_string.lower()
         subtype_re = re.compile('^' + cls._geometry_name + r"\[(?P<subtype>\w+)\]$")
@@ -65,7 +93,7 @@ class GeometryDtype(ExtensionDtype):
         return subtype_string
 
     @classmethod
-    def construct_from_string(cls, string):
+    def construct_from_string(cls, string: Union[str, int]) -> GeometryDtype:
         # lowercase string
         try:
             string = string.lower()
@@ -87,7 +115,7 @@ class GeometryDtype(ExtensionDtype):
         else:
             raise TypeError(msg.format(string))
 
-    def __init__(self, subtype):
+    def __init__(self, subtype: Union[dtype, str, Type[int64], Type[float64]]) -> None:
         if isinstance(subtype, GeometryDtype):
             self.subtype = subtype.subtype
         else:
@@ -100,17 +128,17 @@ class GeometryDtype(ExtensionDtype):
         array_type = self.construct_array_type()
         self.arrow_dtype = array_type._arrow_type_from_numpy_element_dtype(subtype)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.__class__, self.arrow_dtype))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "{}[{}]".format(self._geometry_name, str(self.subtype.name))
 
     def __repr__(self):
         return "{}({})".format(self.__class__.__name__,  str(self.subtype.name))
 
     @property
-    def type(self):
+    def type(self) -> Type[Geometry]:
         # type: () -> type
         """The scalar type for the array, e.g. ``int``.
         It's expected ``ExtensionArray[item]`` returns an instance
@@ -119,7 +147,7 @@ class GeometryDtype(ExtensionDtype):
         return Geometry
 
     @property
-    def name(self):
+    def name(self) -> str:
         # type: () -> str
         """A string identifying the data type.
         Will be used for display in, e.g. ``Series.dtype``
@@ -128,7 +156,7 @@ class GeometryDtype(ExtensionDtype):
 
 
 class Geometry:
-    def __init__(self, data, dtype=None):
+    def __init__(self, data: Any, dtype: None=None) -> None:
         if isinstance(data, pa.Scalar):
             # Use arrow Scalar as is
             self.data = data
@@ -136,13 +164,13 @@ class Geometry:
             # Convert to arrow Scalar
             self.data = pa.array([data])[0]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "{}({})".format(self.__class__.__name__, self.data.as_py())
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.__class__, np.array(self.data.as_py()).tobytes()))
 
-    def __eq__(self, other):
+    def __eq__(self, other: Optional[Geometry]) -> bool:
         if isinstance(other, Container):
             return other == self
         if type(other) is not type(self):
@@ -154,7 +182,7 @@ class Geometry:
         raise NotImplementedError()
 
     @classmethod
-    def from_shapely(cls, shape):
+    def from_shapely(cls, shape: Union[Point, MultiPoint, LineString, MultiLineString]) -> Union[MultiLine, Point, MultiPoint, Line]:
         """
         Build a spatialpandas geometry object from a shapely shape
 
@@ -182,7 +210,7 @@ class GeometryArray(ExtensionArray):
 
     # Import / export methods
     @classmethod
-    def from_geopandas(cls, ga):
+    def from_geopandas(cls, ga: Union[Series, GeometryArray, GeoSeries]) -> GeometryArray:
         """
         Build a spatialpandas geometry array from a geopandas GeometryArray or
         GeoSeries.
@@ -203,18 +231,18 @@ class GeometryArray(ExtensionArray):
             for shape in ga
         ])
 
-    def to_geopandas(self):
+    def to_geopandas(self) -> GeometryArray:
         """
         Convert a spatialpandas geometry array into a geopandas GeometryArray
 
         Returns:
             geopandas GeometryArray
         """
-        from geopandas.array import from_shapely
+        from geopandas.array import GeometryArray, from_shapely
         return from_shapely([el.to_shapely() for el in self])
 
     # Constructor
-    def __init__(self, array, dtype=None, copy=None):
+    def __init__(self, array: Any, dtype: Optional[Any]=None, copy: None=None) -> None:
         # Choose default dtype for empty arrays
         try:
             if len(array) == 0 and dtype is None:
@@ -275,19 +303,19 @@ class GeometryArray(ExtensionArray):
         return GeometryDtype
 
     @property
-    def numpy_dtype(self):
+    def numpy_dtype(self) -> dtype:
         return self._numpy_element_type
 
     # Arrow conversion
-    def __arrow_array__(self, type=None):
+    def __arrow_array__(self, type: None=None) -> Union[FixedSizeBinaryArray, ListArray]:
         return self.data
 
     # ExtensionArray methods
     @property
-    def dtype(self):
+    def dtype(self) -> GeometryDtype:
         return self._dtype
 
-    def astype(self, dtype, copy=True):
+    def astype(self, dtype: Union[LineDtype, dtype, Type[object], PointDtype], copy: bool=True) -> Union[LineArray, PointArray, ndarray]:
         if self.dtype == dtype:
             return self.copy() if copy else self
 
@@ -306,24 +334,24 @@ class GeometryArray(ExtensionArray):
     astype.__doc__ = ExtensionArray.astype.__doc__
 
     @property
-    def nbytes(self):
+    def nbytes(self) -> int:
         size = 0
         for buf in self.data.buffers():
             if buf is not None:
                 size += buf.size
         return size
 
-    def isna(self):
+    def isna(self) -> ndarray:
         return _extract_isnull_bytemap(self.data)
 
     isna.__doc__ = ExtensionArray.isna.__doc__
 
-    def copy(self):
+    def copy(self) -> GeometryArray:
         return type(self)(self.data, self.dtype)
 
     copy.__doc__ = ExtensionArray.copy.__doc__
 
-    def __eq__(self, other):
+    def __eq__(self, other: Union[LineArray, PointArray]) -> ndarray:
         if type(other) is type(self):
             if len(other) != len(self):
                 raise ValueError("""
@@ -349,10 +377,10 @@ Cannot check equality of {typ} of length {a_len} with:
     def __contains__(self, item) -> bool:
         raise NotImplementedError
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: Any) -> Any:
         err_msg = ("Only integers, slices and integer or boolean"
                    "arrays are valid indices.")
         if isinstance(item, Integral):
@@ -417,7 +445,7 @@ Cannot check equality of {typ} of length {a_len} with:
         else:
             raise IndexError(err_msg)
 
-    def take(self, indices, allow_fill=False, fill_value=None):
+    def take(self, indices: Union[ndarray, List[int], IntegerArray], allow_fill: bool=False, fill_value: Optional[float]=None) -> Union[LineArray, MultiPointArray, PointArray, MultiLineArray]:
         indices = np.asarray(indices)
 
         # Validate self non-empty (Pandas expects this error when array is empty)
@@ -476,7 +504,7 @@ Cannot check equality of {typ} of length {a_len} with:
     take.__doc__ = ExtensionArray.take.__doc__
 
     @classmethod
-    def _from_sequence(cls, scalars, dtype=None, copy=None):
+    def _from_sequence(cls, scalars: Any, dtype: Optional[Any]=None, copy: Optional[bool]=None) -> Union[MultiPointArray, LineArray, RingArray, PointArray, MultiLineArray]:
         if isinstance(scalars, cls):
             return scalars
         elif isinstance(scalars, Geometry):
@@ -486,18 +514,18 @@ Cannot check equality of {typ} of length {a_len} with:
             None if np.isscalar(v) and np.isnan(v) else v for v in scalars
         ], dtype=dtype)
 
-    def _values_for_factorize(self):
+    def _values_for_factorize(self) -> Tuple[ndarray, None]:
         return np.array(self, dtype='object'), None
 
     @classmethod
-    def _from_factorized(cls, values, original):
+    def _from_factorized(cls, values: ndarray, original: Union[LineArray, PointArray]) -> Union[LineArray, PointArray]:
         return cls(values, dtype=original.dtype)
 
-    def _values_for_argsort(self):
+    def _values_for_argsort(self) -> ndarray:
         return np.array(list(self), dtype='object')
 
     @classmethod
-    def _concat_same_type(cls, to_concat):
+    def _concat_same_type(cls, to_concat: Union[List[PointArray], List[LineArray]]) -> Union[LineArray, PointArray]:
         return cls(
             pa.concat_arrays(
                 [ea.data for ea in to_concat]
@@ -505,7 +533,7 @@ Cannot check equality of {typ} of length {a_len} with:
             dtype=to_concat[0].dtype
         )
 
-    def fillna(self, value=None, method=None, limit=None):
+    def fillna(self, value: Optional[Union[LineArray, Line, PointArray, Point]]=None, method: Optional[str]=None, limit: Optional[int]=None) -> Union[LineArray, PointArray]:
         from pandas.api.types import is_array_like
         from pandas.core.missing import get_fill_func
         from pandas.util._validators import validate_fillna_kwargs
@@ -632,10 +660,10 @@ Cannot check equality of {typ} of length {a_len} with:
 
 
 class _BaseCoordinateIndexer:
-    def __init__(self, sindex):
+    def __init__(self, sindex: None) -> None:
         self._sindex = sindex
 
-    def _get_bounds(self, key):
+    def _get_bounds(self, key: Tuple[slice, slice]) -> Tuple[float, float, float, float]:
         xs, ys = key
         # Handle xs and ys as scalar numeric values
         if type(xs) is not slice:
@@ -665,7 +693,7 @@ class _BaseCoordinateIndexer:
             y0, y1 = y1, y0
         return x0, x1, y0, y1
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Tuple[slice, slice]):
         x0, x1, y0, y1 = self._get_bounds(key)
         if self._sindex:
             covers_inds, overlaps_inds = self._sindex.covers_overlaps((x0, y0, x1, y1))
@@ -678,12 +706,12 @@ class _BaseCoordinateIndexer:
 
 
 class _CoordinateIndexer(_BaseCoordinateIndexer):
-    def __init__(self, obj, parent=None):
+    def __init__(self, obj: MultiPointArray, parent=None) -> None:
         super().__init__(obj._sindex)
         self._obj = obj
         self._parent = parent
 
-    def _perform_get_item(self, covers_inds, overlaps_inds, x0, x1, y0, y1):
+    def _perform_get_item(self, covers_inds: None, overlaps_inds: None, x0: float, x1: float, y0: float, y1: float):
         overlaps_inds_mask = self._obj.intersects_bounds(
             (x0, y0, x1, y1), overlaps_inds
         )
@@ -734,7 +762,7 @@ def _perform_extract_isnull_bytemap(bitmap, bitmap_length, bitmap_offset, dst_of
         dst[dst_offset + i] = (bitmap[byte_idx] & bit_mask) == 0
 
 
-def _extract_isnull_bytemap(list_array):
+def _extract_isnull_bytemap(list_array: Union[FixedSizeBinaryArray, ListArray]) -> ndarray:
     """
     Note: Copied from fletcher: See NOTICE for license info
 
@@ -762,7 +790,7 @@ def _extract_isnull_bytemap(list_array):
     return result
 
 
-def is_geometry_array(data):
+def is_geometry_array(data: Union[Series, GeoSeries, SingleBlockManager, PointArray, GeoSeries]) -> bool:
     """
     Check if the data is of geometry dtype.
     Does not include object array of GeometryList/shapely scalars
@@ -773,7 +801,7 @@ def is_geometry_array(data):
         return False
 
 
-def to_geometry_array(data, dtype=None):
+def to_geometry_array(data: Union[Series, GeoSeries, SingleBlockManager, PointArray, GeoSeries], dtype: Optional[Any]=None) -> Any:
     from . import (LineArray, MultiLineArray, MultiPointArray,
                    MultiPolygonArray, PointArray, PolygonArray, RingArray)
     if sg is not None:

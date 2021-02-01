@@ -1,9 +1,11 @@
 import pathlib
 
 import fsspec
+from fsspec.implementations.local import LocalFileSystem
+from typing import Optional
 
 
-def validate_coerce_filesystem(path, filesystem=None):
+def validate_coerce_filesystem(path: str, filesystem: Optional[LocalFileSystem]=None) -> LocalFileSystem:
     """
     Validate filesystem argument and return an fsspec file system object
 

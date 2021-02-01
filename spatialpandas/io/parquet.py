@@ -25,6 +25,11 @@ from spatialpandas.geometry import (
     PointDtype, MultiPointDtype, RingDtype, LineDtype,
     MultiLineDtype, PolygonDtype, MultiPolygonDtype, GeometryDtype
 )
+from fsspec.implementations.local import LocalFileSystem
+from pandas.core.frame import DataFrame
+from pathlib import PosixPath
+from spatialpandas.geodataframe import GeoDataFrame
+from typing import Any, Dict, List, Optional
 
 _geometry_dtypes = [
     PointDtype, MultiPointDtype, RingDtype, LineDtype,
@@ -32,7 +37,7 @@ _geometry_dtypes = [
 ]
 
 
-def _import_geometry_columns(df, geom_cols):
+def _import_geometry_columns(df: DataFrame, geom_cols: Dict[str, str]) -> DataFrame:
     new_cols = {}
     for col, type_str in geom_cols.items():
         if col in df and not isinstance(df.dtypes[col], GeometryDtype):
@@ -41,7 +46,7 @@ def _import_geometry_columns(df, geom_cols):
     return df.assign(**new_cols)
 
 
-def _load_parquet_pandas_metadata(path, filesystem=None):
+def _load_parquet_pandas_metadata(path: str, filesystem: Optional[LocalFileSystem]=None) -> Dict[str, Any]:
     filesystem = validate_coerce_filesystem(path, filesystem)
     if not filesystem.exists(path):
         raise ValueError("Path not found: " + path)
@@ -67,7 +72,7 @@ def _load_parquet_pandas_metadata(path, filesystem=None):
     )
 
 
-def _get_geometry_columns(pandas_metadata):
+def _get_geometry_columns(pandas_metadata: Dict[str, Any]) -> Dict[str, str]:
     columns = pandas_metadata.get('columns', [])
     geom_cols = {}
     for col in columns:
@@ -86,19 +91,19 @@ def _get_geometry_columns(pandas_metadata):
 
 
 def to_parquet(
-    df,
-    fname,
-    compression="snappy",
-    index=None,
+    df: GeoDataFrame,
+    fname: PosixPath,
+    compression: str="snappy",
+    index: None=None,
     **kwargs
-):
+) -> None:
     # Standard pandas to_parquet with pyarrow engine
     pd_to_parquet(
         df, fname, engine="pyarrow", compression=compression, index=index, **kwargs
     )
 
 
-def read_parquet(path, columns=None, filesystem=None):
+def read_parquet(path: str, columns: Optional[List[str]]=None, filesystem: None=None) -> GeoDataFrame:
     filesystem = validate_coerce_filesystem(path, filesystem)
 
     # Load pandas parquet metadata

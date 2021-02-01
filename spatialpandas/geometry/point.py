@@ -3,17 +3,32 @@ from pandas.core.dtypes.dtypes import register_extension_dtype
 from spatialpandas.geometry._algorithms.intersection import segment_intersects_point, \
     point_intersects_polygon
 
-from spatialpandas.geometry.base import GeometryDtype
+from spatialpandas.geometry.base import Geometry, GeometryDtype
 from spatialpandas.geometry.basefixed import GeometryFixed, GeometryFixedArray
 from dask.dataframe.extensions import make_array_nonempty
 from spatialpandas.utils import ngpjit
+from geopandas.array import GeometryArray
+from geopandas.geoseries import GeoSeries
+from numpy import bool_, float64, ndarray
+from pandas.core.series import Series
+from shapely.geometry.point import Point
+from spatialpandas.geometry.line import Line
+from spatialpandas.geometry.multiline import MultiLine
+from spatialpandas.geometry.multipoint import MultiPoint
+from spatialpandas.geometry.multipolygon import MultiPolygon
+from spatialpandas.geometry.polygon import Polygon
+from typing import Optional, Tuple, Type, Union
+
+
+class PointArray:
+    pass
 
 
 @register_extension_dtype
 class PointDtype(GeometryDtype):
     _geometry_name = 'point'
     @classmethod
-    def construct_array_type(cls, *args):
+    def construct_array_type(cls, *args) -> Type[PointArray]:
         return PointArray
 
 
@@ -24,7 +39,7 @@ class Point(GeometryFixed):
         return PointArray
 
     @classmethod
-    def _shapely_to_coordinates(cls, shape):
+    def _shapely_to_coordinates(cls, shape: Point) -> ndarray:
         import shapely.geometry as sg
         if isinstance(shape, sg.Point):
             # Single point
@@ -34,7 +49,7 @@ class Point(GeometryFixed):
 Received invalid value of type {typ}. Must be an instance of Point,
 or MultiPoint""".format(typ=type(shape).__name__))
 
-    def to_shapely(self):
+    def to_shapely(self) -> Point:
         """
         Convert to shapely shape
 
@@ -45,7 +60,7 @@ or MultiPoint""".format(typ=type(shape).__name__))
         return sg.Point(self.flat_values)
 
     @classmethod
-    def from_shapely(cls, shape):
+    def from_shapely(cls, shape: Point) -> Point:
         """
         Build a spatialpandas Point object from a shapely shape
 
@@ -58,22 +73,22 @@ or MultiPoint""".format(typ=type(shape).__name__))
         return super().from_shapely(shape)
 
     @property
-    def x(self):
+    def x(self) -> float64:
         return self.flat_values[0]
 
     @property
-    def y(self):
+    def y(self) -> float64:
         return self.flat_values[1]
 
     @property
-    def length(self):
+    def length(self) -> float:
         return 0.0
 
     @property
-    def area(self):
+    def area(self) -> float:
         return 0.0
 
-    def intersects_bounds(self, bounds):
+    def intersects_bounds(self, bounds: Union[Tuple[float, float, float, float], Tuple[float64, float64, float64, float64]]) -> bool:
         x0, y0, x1, y1 = bounds
         if x1 < x0:
             x0, x1 = x1, x0
@@ -85,14 +100,14 @@ or MultiPoint""".format(typ=type(shape).__name__))
 
         return not outside
 
-    def _intersects_point(self, point):
+    def _intersects_point(self, point: Point) -> bool_:
         return self.x == point.x and self.y == point.y
 
-    def _intersects_multipoint(self, multipoint):
+    def _intersects_multipoint(self, multipoint: MultiPoint) -> bool_:
         flat = multipoint.flat_values
         return np.any((self.x == flat[0::2]) & (self.y == flat[1::2]))
 
-    def _intersects_line(self, line):
+    def _intersects_line(self, line: Union[Line, MultiLine]) -> bool:
         buffer_values = line.buffer_values
         offsets = line.buffer_inner_offsets
 
@@ -127,12 +142,12 @@ or MultiPoint""".format(typ=type(shape).__name__))
 
         return False
 
-    def _intersects_polygon(self, polygon):
+    def _intersects_polygon(self, polygon: Union[MultiPolygon, Polygon]) -> bool:
         return point_intersects_polygon(
             self.x, self.y, polygon.buffer_values, polygon.buffer_inner_offsets
         )
 
-    def intersects(self, shape):
+    def intersects(self, shape: Geometry) -> Union[bool, bool_]:
         from . import MultiPoint, Line, MultiLine, Polygon, MultiPolygon
         if isinstance(shape, Point):
             return self._intersects_point(shape)
@@ -154,11 +169,11 @@ class PointArray(GeometryFixedArray):
     _element_type = Point
 
     @property
-    def _dtype_class(self):
+    def _dtype_class(self) -> Type[PointDtype]:
         return PointDtype
 
     @classmethod
-    def from_geopandas(cls, ga):
+    def from_geopandas(cls, ga: Union[Series, GeoSeries, GeometryArray]) -> PointArray:
         """
         Build a spatialpandas MultiPointArray from a geopandas GeometryArray or
         GeoSeries.
@@ -173,28 +188,28 @@ class PointArray(GeometryFixedArray):
         return super().from_geopandas(ga)
 
     @property
-    def length(self):
+    def length(self) -> ndarray:
         return np.zeros(len(self), dtype=np.float64)
 
     @property
-    def area(self):
+    def area(self) -> ndarray:
         return np.zeros(len(self), dtype=np.float64)
 
     @property
-    def x(self):
+    def x(self) -> ndarray:
         res = np.full(len(self), np.nan)
         mask = ~self.isna()
         res[mask] = self.flat_values[0::2][mask]
         return res
 
     @property
-    def y(self):
+    def y(self) -> ndarray:
         res = np.full(len(self), np.nan)
         mask = ~self.isna()
         res[mask] = self.flat_values[1::2][mask]
         return res
 
-    def intersects_bounds(self, bounds, inds=None):
+    def intersects_bounds(self, bounds: Tuple[float, float, float, float], inds: Optional[ndarray]=None) -> ndarray:
         x0, y0, x1, y1 = bounds
         if x1 < x0:
             x0, x1 = x1, x0
@@ -210,35 +225,35 @@ class PointArray(GeometryFixedArray):
         outside = np.isnan(xs) | (xs < x0) | (xs > x1) | (ys < y0) | (ys > y1)
         return ~outside
 
-    def _intersects_point(self, point, inds):
+    def _intersects_point(self, point: Point, inds: Optional[ndarray]) -> ndarray:
         flat = self.flat_values
         if inds is None:
             return (flat[0::2] == point.x) & (flat[1::2] == point.y)
         else:
             return (flat[inds * 2] == point.x) & (flat[inds * 2 + 1] == point.y)
 
-    def _intersects_multipoint(self, multipoint, inds):
+    def _intersects_multipoint(self, multipoint: MultiPoint, inds: Optional[ndarray]) -> ndarray:
         flat_points = self.flat_values
         flat_multipoint = multipoint.flat_values
         if inds is None:
             inds = np.arange(len(self))
         return _perform_intersects_multipoint(flat_points, flat_multipoint, inds)
 
-    def _intersects_line(self, line, inds):
+    def _intersects_line(self, line: Union[Line, MultiLine], inds: Optional[ndarray]) -> ndarray:
         if inds is None:
             inds = np.arange(len(self))
         return _perform_intersects_line(
             self.flat_values, line.buffer_values,  line.buffer_inner_offsets, inds
         )
 
-    def _intersects_polygon(self, polygon, inds):
+    def _intersects_polygon(self, polygon: Union[MultiPolygon, Polygon], inds: Optional[ndarray]) -> ndarray:
         if inds is None:
             inds = np.arange(len(self))
         return _perform_intersects_polygon(
             self.flat_values, polygon.buffer_values,  polygon.buffer_inner_offsets, inds
         )
 
-    def intersects(self, shape, inds=None):
+    def intersects(self, shape: Geometry, inds: Optional[ndarray]=None) -> ndarray:
         from . import MultiPoint, Line, MultiLine, Polygon, MultiPolygon
         if isinstance(shape, Point):
             return self._intersects_point(shape, inds)

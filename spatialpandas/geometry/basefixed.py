@@ -1,12 +1,15 @@
 from functools import total_ordering
-import pyarrow as pa
-import numpy as np
+from typing import Any, List, Optional, Tuple, Union
 
-from spatialpandas.geometry.base import Geometry, GeometryArray, GeometryDtype
-from spatialpandas.geometry.baselist import _lexographic_lt
-from ._algorithms.bounds import (
-    total_bounds_interleaved, total_bounds_interleaved_1d, bounds_interleaved
-)
+import numpy as np
+import pyarrow as pa
+from numpy import dtype, ndarray
+from pyarrow.lib import FixedSizeBinaryType
+
+from ._algorithms.bounds import (bounds_interleaved, total_bounds_interleaved,
+                                 total_bounds_interleaved_1d)
+from .base import Geometry, GeometryArray, GeometryDtype
+from .baselist import _lexographic_lt
 
 
 @total_ordering
@@ -14,7 +17,7 @@ class GeometryFixed(Geometry):
     """
     Base class for elements of GeometryFixedArray subclasses
     """
-    def __init__(self, data, dtype=None):
+    def __init__(self, data: Union[bytes, List[int], ndarray], dtype: Optional[dtype]=None) -> None:
         if isinstance(data, np.ndarray):
             # Convert numpy array to bytes
             dtype = data.dtype
@@ -24,17 +27,17 @@ class GeometryFixed(Geometry):
         self.numpy_dtype = np.dtype(dtype)
         self.pyarrow_type = pa.from_numpy_dtype(dtype)
 
-    def __lt__(self, other):
+    def __lt__(self, other: Geometry) -> bool:
         return _lexographic_lt(self.flat_values, other.flat_values)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return 8 * len(self.data.as_py()) // self.pyarrow_type.bit_width
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "{}({})".format(self.__class__.__name__, self.flat_values.tolist())
 
     @property
-    def flat_values(self):
+    def flat_values(self) -> ndarray:
         return pa.Array.from_buffers(
             self.pyarrow_type,
             len(self),
@@ -54,16 +57,18 @@ class GeometryFixedArray(GeometryArray):
     _element_len = 2
 
     @classmethod
-    def _arrow_type_from_numpy_element_dtype(cls, dtype):
+    def _arrow_type_from_numpy_element_dtype(cls, dtype: Union[dtype, str]) -> FixedSizeBinaryType:
         # Scalar element dtype
         arrow_dtype = pa.from_numpy_dtype(dtype)
         return pa.binary(arrow_dtype.bit_width // 8)
 
-    def _numpy_element_dtype_from_arrow_type(self, pyarrow_type):
+    def _numpy_element_dtype_from_arrow_type(self, pyarrow_type: FixedSizeBinaryType) -> Union[str, dtype]:
         return self._numpy_dtype
 
     # Constructor
-    def __init__(self, array, dtype=None):
+    def __init__(self,
+                 array: Any,
+                 dtype: Optional[Union[str, GeometryDtype]] = None) -> None:
 
         def invalid_array():
             err_msg = (
@@ -180,7 +185,7 @@ class GeometryFixedArray(GeometryArray):
 
     # Base geometry methods
     @property
-    def flat_values(self):
+    def flat_values(self) -> ndarray:
         if len(self.data) == 0:
             return np.array([], dtype=self.numpy_dtype)
         else:
@@ -189,7 +194,7 @@ class GeometryFixedArray(GeometryArray):
             return np.asarray(self.data.buffers()[1]).view(self.numpy_dtype)[start:stop]
 
     @property
-    def total_bounds(self):
+    def total_bounds(self) -> Tuple[float, float, float, float]:
         return total_bounds_interleaved(self.flat_values)
 
     @property

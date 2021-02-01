@@ -17,6 +17,14 @@ from spatialpandas.geometry._algorithms.measures import (
 )
 
 from dask.dataframe.extensions import make_array_nonempty
+from numpy import ndarray
+from pandas.core.series import Series
+from shapely.geometry.multipolygon import MultiPolygon
+from typing import List, Type
+
+
+class MultiPolygonArray:
+    pass
 
 
 @register_extension_dtype
@@ -24,7 +32,7 @@ class MultiPolygonDtype(GeometryDtype):
     _geometry_name = 'multipolygon'
 
     @classmethod
-    def construct_array_type(cls, *args):
+    def construct_array_type(cls, *args) -> Type[MultiPolygonArray]:
         if len(args) > 0:
             raise NotImplementedError("construct_array_type does not support arguments")
         return MultiPolygonArray
@@ -38,7 +46,7 @@ class MultiPolygon(GeometryList):
         return MultiPolygonArray
 
     @classmethod
-    def _shapely_to_coordinates(cls, shape):
+    def _shapely_to_coordinates(cls, shape: MultiPolygon) -> List[List[ndarray]]:
         import shapely.geometry as sg
         if isinstance(shape, sg.MultiPolygon):
             multipolygon = []
@@ -75,7 +83,7 @@ Received invalid value of type {typ}. Must be an instance of Polygon or MultiPol
         return sg.MultiPolygon(polygons=polygons)
 
     @classmethod
-    def from_shapely(cls, shape, orient=True):
+    def from_shapely(cls, shape: MultiPolygon, orient: bool=True) -> MultiPolygon:
         """
         Build a spatialpandas MultiPolygon object from a shapely shape
 
@@ -108,11 +116,11 @@ Received invalid value of type {typ}. Must be an instance of Polygon or MultiPol
         return MultiLine(new_data)
 
     @property
-    def length(self):
+    def length(self) -> float:
         return compute_line_length(self.buffer_values, self.buffer_inner_offsets)
 
     @property
-    def area(self):
+    def area(self) -> float:
         return compute_area(self.buffer_values, self.buffer_inner_offsets)
 
     def intersects_bounds(self, bounds):
@@ -132,11 +140,11 @@ class MultiPolygonArray(GeometryListArray):
     _nesting_levels = 3
 
     @property
-    def _dtype_class(self):
+    def _dtype_class(self) -> Type[MultiPolygonDtype]:
         return MultiPolygonDtype
 
     @classmethod
-    def from_geopandas(cls, ga, orient=True):
+    def from_geopandas(cls, ga: Series, orient: bool=True) -> MultiPolygonArray:
         """
         Build a spatialpandas MultiPolygonArray from a geopandas GeometryArray or
         GeoSeries.
@@ -161,7 +169,7 @@ class MultiPolygonArray(GeometryListArray):
         else:
             return mpa
 
-    def oriented(self):
+    def oriented(self) -> MultiPolygonArray:
         missing = np.concatenate([self.isna(), [False]])
         buffer_values = self.buffer_values.copy()
         multipoly_offsets, poly_offsets, ring_offsets = self.buffer_offsets
@@ -187,7 +195,7 @@ class MultiPolygonArray(GeometryListArray):
         return MultiLineArray(new_data)
 
     @property
-    def length(self):
+    def length(self) -> ndarray:
         result = np.full(len(self), np.nan, dtype=np.float64)
         _geometry_map_nested3(
             compute_line_length,
@@ -199,7 +207,7 @@ class MultiPolygonArray(GeometryListArray):
         return result
 
     @property
-    def area(self):
+    def area(self) -> ndarray:
         result = np.full(len(self), np.nan, dtype=np.float64)
         _geometry_map_nested3(
             compute_area,

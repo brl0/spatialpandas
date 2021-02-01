@@ -5,13 +5,22 @@ from spatialpandas.geometry._algorithms.intersection import multipoints_intersec
 from spatialpandas.geometry.base import GeometryDtype
 from spatialpandas.geometry.baselist import GeometryListArray, GeometryList
 from dask.dataframe.extensions import make_array_nonempty
+from geopandas.array import GeometryArray
+from geopandas.geoseries import GeoSeries
+from numpy import bool_, ndarray
+from shapely.geometry.multipoint import MultiPoint
+from typing import Optional, Tuple, Type, Union
+
+
+class MultiPointArray:
+    pass
 
 
 @register_extension_dtype
 class MultiPointDtype(GeometryDtype):
     _geometry_name = 'multipoint'
     @classmethod
-    def construct_array_type(cls, *args):
+    def construct_array_type(cls, *args) -> Type[MultiPointArray]:
         if len(args) > 0:
             raise NotImplementedError("construct_array_type does not support arguments")
         return MultiPointArray
@@ -25,7 +34,7 @@ class MultiPoint(GeometryList):
         return MultiPointArray
 
     @classmethod
-    def _shapely_to_coordinates(cls, shape):
+    def _shapely_to_coordinates(cls, shape: MultiPoint) -> ndarray:
         import shapely.geometry as sg
         if isinstance(shape, (sg.Point, sg.MultiPoint)):
             # Single line
@@ -35,7 +44,7 @@ class MultiPoint(GeometryList):
 Received invalid value of type {typ}. Must be an instance of Point,
 or MultiPoint""".format(typ=type(shape).__name__))
 
-    def to_shapely(self):
+    def to_shapely(self) -> MultiPoint:
         """
         Convert to shapely shape
 
@@ -47,7 +56,7 @@ or MultiPoint""".format(typ=type(shape).__name__))
         return sg.MultiPoint(point_coords.reshape(len(point_coords) // 2, 2))
 
     @classmethod
-    def from_shapely(cls, shape):
+    def from_shapely(cls, shape: MultiPoint) -> MultiPoint:
         """
         Build a spatialpandas MultiPoint object from a shapely shape
 
@@ -60,14 +69,14 @@ or MultiPoint""".format(typ=type(shape).__name__))
         return super().from_shapely(shape)
 
     @property
-    def length(self):
+    def length(self) -> float:
         return 0.0
 
     @property
-    def area(self):
+    def area(self) -> float:
         return 0.0
 
-    def intersects_bounds(self, bounds):
+    def intersects_bounds(self, bounds: Tuple[float, float, float, float]) -> bool_:
         x0, y0, x1, y1 = bounds
         result = np.zeros(1, dtype=np.bool_)
         offsets = self.buffer_outer_offsets
@@ -83,11 +92,11 @@ class MultiPointArray(GeometryListArray):
     _nesting_levels = 1
 
     @property
-    def _dtype_class(self):
+    def _dtype_class(self) -> Type[MultiPointDtype]:
         return MultiPointDtype
 
     @classmethod
-    def from_geopandas(cls, ga):
+    def from_geopandas(cls, ga: Union[GeometryArray, GeoSeries]) -> MultiPointArray:
         """
         Build a spatialpandas MultiPointArray from a geopandas GeometryArray or
         GeoSeries.
@@ -102,14 +111,14 @@ class MultiPointArray(GeometryListArray):
         return super().from_geopandas(ga)
 
     @property
-    def length(self):
+    def length(self) -> ndarray:
         return np.zeros(len(self), dtype=np.float64)
 
     @property
-    def area(self):
+    def area(self) -> ndarray:
         return np.zeros(len(self), dtype=np.float64)
 
-    def intersects_bounds(self, bounds, inds=None):
+    def intersects_bounds(self, bounds: Tuple[float, float, float, float], inds: Optional[ndarray]=None) -> ndarray:
         x0, y0, x1, y1 = bounds
         offsets0 = self.buffer_outer_offsets
         start_offsets0 = offsets0[:-1]
@@ -127,7 +136,7 @@ class MultiPointArray(GeometryListArray):
         return result
 
 
-def _multi_points_array_non_empty(dtype):
+def _multi_points_array_non_empty(dtype: MultiPointDtype) -> MultiPointArray:
     """
     Create an example length 2 array to register with Dask.
     See https://docs.dask.org/en/latest/dataframe-extend.html#extension-arrays

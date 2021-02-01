@@ -14,6 +14,14 @@ from spatialpandas.geometry._algorithms.measures import (
 )
 from dask.dataframe.extensions import make_array_nonempty
 import pyarrow as pa
+from numpy import ndarray
+from pandas.core.series import Series
+from shapely.geometry.polygon import Polygon
+from typing import List, Type
+
+
+class PolygonArray:
+    pass
 
 
 @register_extension_dtype
@@ -21,7 +29,7 @@ class PolygonDtype(GeometryDtype):
     _geometry_name = 'polygon'
 
     @classmethod
-    def construct_array_type(cls, *args):
+    def construct_array_type(cls, *args) -> Type[PolygonArray]:
         if len(args) > 0:
             raise NotImplementedError("construct_array_type does not support arguments")
         return PolygonArray
@@ -35,7 +43,7 @@ class Polygon(GeometryList):
         return PolygonArray
 
     @classmethod
-    def _shapely_to_coordinates(cls, shape):
+    def _shapely_to_coordinates(cls, shape: Polygon) -> List[ndarray]:
         import shapely.geometry as sg
         if isinstance(shape, sg.Polygon):
             if shape.exterior is not None:
@@ -67,7 +75,7 @@ Received invalid value of type {typ}. Must be an instance of Polygon
         return sg.Polygon(shell=rings[0], holes=rings[1:])
 
     @classmethod
-    def from_shapely(cls, shape, orient=True):
+    def from_shapely(cls, shape: Polygon, orient: bool=True) -> Polygon:
         """
         Build a spatialpandas Polygon object from a shapely shape
 
@@ -96,11 +104,11 @@ Received invalid value of type {typ}. Must be an instance of Polygon
         return MultiLine(self.data)
 
     @property
-    def length(self):
+    def length(self) -> float:
         return compute_line_length(self.buffer_values, self.buffer_inner_offsets)
 
     @property
-    def area(self):
+    def area(self) -> float:
         return compute_area(self.buffer_values, self.buffer_inner_offsets)
 
     def intersects_bounds(self, bounds):
@@ -121,11 +129,11 @@ class PolygonArray(GeometryListArray):
     _nesting_levels = 2
 
     @property
-    def _dtype_class(self):
+    def _dtype_class(self) -> Type[PolygonDtype]:
         return PolygonDtype
 
     @classmethod
-    def from_geopandas(cls, ga, orient=True):
+    def from_geopandas(cls, ga: Series, orient: bool=True) -> PolygonArray:
         """
         Build a spatialpandas PolygonArray from a geopandas GeometryArray or
         GeoSeries.
@@ -148,7 +156,7 @@ class PolygonArray(GeometryListArray):
         else:
             return polygons
 
-    def oriented(self):
+    def oriented(self) -> PolygonArray:
         missing = np.concatenate([self.isna(), [False]])
         buffer_values = self.buffer_values.copy()
         poly_offsets, ring_offsets = self.buffer_offsets
@@ -170,7 +178,7 @@ class PolygonArray(GeometryListArray):
         return MultiLineArray(self.data)
 
     @property
-    def length(self):
+    def length(self) -> ndarray:
         result = np.full(len(self), np.nan, dtype=np.float64)
         _geometry_map_nested2(
             compute_line_length,
@@ -182,7 +190,7 @@ class PolygonArray(GeometryListArray):
         return result
 
     @property
-    def area(self):
+    def area(self) -> ndarray:
         result = np.full(len(self), np.nan, dtype=np.float64)
         _geometry_map_nested2(
             compute_area,

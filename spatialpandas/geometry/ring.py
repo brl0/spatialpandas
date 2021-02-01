@@ -4,6 +4,12 @@ from spatialpandas.geometry.line import (
     LineDtype, Line, LineArray
 )
 from dask.dataframe.extensions import make_array_nonempty
+from shapely.geometry.polygon import LinearRing
+from typing import Type
+
+
+class RingArray:
+    pass
 
 
 @register_extension_dtype
@@ -11,7 +17,7 @@ class RingDtype(LineDtype):
     _geometry_name = 'ring'
 
     @classmethod
-    def construct_array_type(cls, *args):
+    def construct_array_type(cls, *args) -> Type[RingArray]:
         return RingArray
 
 
@@ -21,7 +27,7 @@ class Ring(Line):
     def construct_array_type(cls):
         return RingArray
 
-    def to_shapely(self):
+    def to_shapely(self) -> LinearRing:
         """
         Convert to shapely shape
 
@@ -50,7 +56,7 @@ class RingArray(LineArray):
     _element_type = Ring
 
     @property
-    def _dtype_class(self):
+    def _dtype_class(self) -> Type[RingDtype]:
         return RingDtype
 
     @classmethod

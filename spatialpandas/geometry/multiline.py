@@ -12,13 +12,28 @@ from spatialpandas.geometry.baselist import (
 import numpy as np
 from spatialpandas.geometry._algorithms.measures import compute_line_length
 from dask.dataframe.extensions import make_array_nonempty
+from geopandas.array import GeometryArray
+from geopandas.geoseries import GeoSeries
+from numpy import bool_, ndarray
+from pandas.core.series import Series
+from shapely.geometry.linestring import LineString
+from shapely.geometry.multilinestring import MultiLineString
+from typing import List, Optional, Tuple, Type, Union
+
+
+class MultiLineArray:
+    pass
+
+
+class MultiLine:
+    pass
 
 
 @register_extension_dtype
 class MultiLineDtype(GeometryDtype):
     _geometry_name = 'multiline'
     @classmethod
-    def construct_array_type(cls, *args):
+    def construct_array_type(cls, *args) -> Type[MultiLineArray]:
         if len(args) > 0:
             raise NotImplementedError("construct_array_type does not support arguments")
         return MultiLineArray
@@ -32,7 +47,7 @@ class MultiLine(GeometryList):
         return MultiLineArray
 
     @classmethod
-    def _shapely_to_coordinates(cls, shape):
+    def _shapely_to_coordinates(cls, shape: Union[MultiLineString, LineString]) -> List[ndarray]:
         import shapely.geometry as sg
         if isinstance(shape, sg.MultiLineString):
             shape = list(shape)
@@ -51,7 +66,7 @@ class MultiLine(GeometryList):
 Received invalid value of type {typ}. Must be an instance of MultiLineString
 """.format(typ=type(shape).__name__))
 
-    def to_shapely(self):
+    def to_shapely(self) -> MultiLineString:
         """
         Convert to shapely shape
 
@@ -69,7 +84,7 @@ Received invalid value of type {typ}. Must be an instance of MultiLineString
         return sg.MultiLineString(lines=lines)
 
     @classmethod
-    def from_shapely(cls, shape):
+    def from_shapely(cls, shape: Union[LineString, MultiLineString]) -> MultiLine:
         """
         Build a spatialpandas MultiLine object from a shapely shape
 
@@ -89,7 +104,7 @@ Received invalid value of type {typ}. Must be an instance of MultiLineString
     def area(self):
         return 0.0
 
-    def intersects_bounds(self, bounds):
+    def intersects_bounds(self, bounds: Tuple[float, float, float, float]) -> bool_:
         x0, y0, x1, y1 = bounds
         offsets = self.buffer_outer_offsets
         start_offsets = offsets[:-1]
@@ -107,11 +122,11 @@ class MultiLineArray(GeometryListArray):
     _nesting_levels = 2
 
     @property
-    def _dtype_class(self):
+    def _dtype_class(self) -> Type[MultiLineDtype]:
         return MultiLineDtype
 
     @classmethod
-    def from_geopandas(cls, ga):
+    def from_geopandas(cls, ga: Union[Series, GeoSeries, GeometryArray]) -> MultiLineArray:
         """
         Build a spatialpandas MultiLineArray from a geopandas GeometryArray or
         GeoSeries.
@@ -141,7 +156,7 @@ class MultiLineArray(GeometryListArray):
     def area(self):
         return np.zeros(len(self), dtype=np.float64)
 
-    def intersects_bounds(self, bounds, inds=None):
+    def intersects_bounds(self, bounds: Tuple[float, float, float, float], inds: Optional[ndarray]=None) -> ndarray:
         x0, y0, x1, y1 = bounds
         offsets0, offsets1 = self.buffer_offsets
         start_offsets0 = offsets0[:-1]
