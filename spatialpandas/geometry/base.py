@@ -156,7 +156,7 @@ class GeometryDtype(ExtensionDtype):
 
 
 class Geometry:
-    def __init__(self, data: Any, dtype: None=None) -> None:
+    def __init__(self, data: Any, dtype: Optional[GeometryDtype]=None) -> None:
         if isinstance(data, pa.Scalar):
             # Use arrow Scalar as is
             self.data = data
